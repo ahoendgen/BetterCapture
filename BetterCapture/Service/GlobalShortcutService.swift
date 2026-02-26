@@ -15,6 +15,20 @@ final class GlobalShortcutService {
 
     // MARK: - Properties
 
+    /// Whether the global shortcut is enabled.
+    var isEnabled: Bool {
+        get {
+            access(keyPath: \.isEnabled)
+            return UserDefaults.standard.object(forKey: "shortcutEnabled") as? Bool ?? true
+        }
+        set {
+            withMutation(keyPath: \.isEnabled) {
+                UserDefaults.standard.set(newValue, forKey: "shortcutEnabled")
+            }
+            reinstallMonitors()
+        }
+    }
+
     /// The key code for the shortcut (default: 15 = "R").
     var keyCode: UInt16 {
         get {
@@ -48,6 +62,7 @@ final class GlobalShortcutService {
 
     /// Human-readable description of the current shortcut.
     var shortcutDescription: String {
+        guard isEnabled else { return "Not set" }
         var parts: [String] = []
         let flags = modifierFlags
         if flags.contains(.control) { parts.append("Ctrl") }
@@ -81,9 +96,35 @@ final class GlobalShortcutService {
         }
     }
 
+    // MARK: - Configuration
+
+    /// Disables the shortcut and removes all monitors.
+    func clearShortcut() {
+        isEnabled = false
+    }
+
+    /// Sets a new key combo and enables the shortcut. Single reinstall.
+    func updateShortcut(keyCode newKeyCode: UInt16, modifierFlags newFlags: NSEvent.ModifierFlags) {
+        withMutation(keyPath: \.keyCode) {
+            UserDefaults.standard.set(newKeyCode, forKey: "shortcutKeyCode")
+        }
+        withMutation(keyPath: \.modifierFlags) {
+            UserDefaults.standard.set(newFlags.rawValue, forKey: "shortcutModifierFlags")
+        }
+        withMutation(keyPath: \.isEnabled) {
+            UserDefaults.standard.set(true, forKey: "shortcutEnabled")
+        }
+        reinstallMonitors()
+    }
+
     // MARK: - Monitor Management
 
     private func installMonitors() {
+        guard isEnabled else {
+            logger.info("Global shortcut disabled")
+            return
+        }
+
         let targetKeyCode = keyCode
         let targetFlags = modifierFlags.intersection(.deviceIndependentFlagsMask)
 

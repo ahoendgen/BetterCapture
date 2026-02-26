@@ -58,6 +58,11 @@ struct VideoSettingsView: View {
 
     var body: some View {
         Form {
+            Section("Recording Mode") {
+                Toggle("Record Video", isOn: $settings.recordVideo)
+                    .help("When disabled, only audio WAV files are recorded")
+            }
+
             Section("Recording") {
                 Picker("Frame Rate", selection: $settings.frameRate) {
                     ForEach(FrameRate.allCases) { rate in
@@ -84,14 +89,15 @@ struct VideoSettingsView: View {
                     }
                 }
             }
+            .disabled(!settings.recordVideo)
 
             Section("Advanced") {
                 Toggle("Capture Alpha Channel", isOn: $settings.captureAlphaChannel)
-                    .disabled(!settings.videoCodec.canToggleAlpha || !settings.containerFormat.supportsAlphaChannel)
+                    .disabled(!settings.recordVideo || !settings.videoCodec.canToggleAlpha || !settings.containerFormat.supportsAlphaChannel)
                     .help(alphaChannelHelpText)
 
                 Toggle("HDR Recording", isOn: $settings.captureHDR)
-                    .disabled(!settings.videoCodec.supportsHDR)
+                    .disabled(!settings.recordVideo || !settings.videoCodec.supportsHDR)
                     .help(hdrHelpText)
             }
 
@@ -102,11 +108,13 @@ struct VideoSettingsView: View {
                 Toggle("Show Dock", isOn: $settings.showDock)
                 Toggle("Show BetterCapture", isOn: $settings.showBetterCapture)
             }
+            .disabled(!settings.recordVideo)
 
             Section("Window Capture") {
                 Toggle("Show Window Shadows", isOn: $settings.showWindowShadows)
                     .help("Include window shadows when capturing individual windows")
             }
+            .disabled(!settings.recordVideo)
         }
         .formStyle(.grouped)
         .padding()
@@ -164,6 +172,8 @@ struct GeneralSettingsView: View {
 
     @State private var automaticallyChecksForUpdates: Bool
     @State private var isRecordingShortcut = false
+    @State private var recordingMonitor: Any?
+    @State private var showConflictWarning = false
 
     init(settings: SettingsStore, updaterService: UpdaterService, globalShortcut: GlobalShortcutService? = nil) {
         self.settings = settings
@@ -175,7 +185,6 @@ struct GeneralSettingsView: View {
     /// Formats the output directory path for display
     private var displayPath: String {
         let path = settings.outputDirectory.path(percentEncoded: false)
-        // Replace home directory with ~ for cleaner display
         let home = FileManager.default.homeDirectoryForCurrentUser.path(percentEncoded: false)
         if path.hasPrefix(home) {
             return "~" + path.dropFirst(home.count)
@@ -212,17 +221,26 @@ struct GeneralSettingsView: View {
             if let globalShortcut {
                 Section("Global Shortcut") {
                     LabeledContent("Toggle Recording") {
-                        Button(isRecordingShortcut ? "Press a key..." : globalShortcut.shortcutDescription) {
-                            isRecordingShortcut = true
-                        }
-                        .onKeyPress { press in
-                            guard isRecordingShortcut else { return .ignored }
-                            globalShortcut.keyCode = press.key.character.flatMap { keyCode(for: $0) } ?? globalShortcut.keyCode
-                            isRecordingShortcut = false
-                            return .handled
+                        HStack {
+                            Button(isRecordingShortcut ? "Press a key combo..." : globalShortcut.shortcutDescription) {
+                                startRecordingShortcut()
+                            }
+
+                            if globalShortcut.isEnabled && !isRecordingShortcut {
+                                Button("Clear", role: .destructive) {
+                                    globalShortcut.clearShortcut()
+                                    showConflictWarning = false
+                                }
+                            }
                         }
                     }
-                    .help("Global keyboard shortcut to start/stop recording")
+                    .help("Global keyboard shortcut to start/stop recording (requires a modifier key)")
+
+                    if showConflictWarning {
+                        Text("This shortcut may conflict with a system shortcut")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
             }
 
@@ -244,9 +262,13 @@ struct GeneralSettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+        .onDisappear {
+            stopRecordingShortcut()
+        }
     }
 
-    /// Opens an NSOpenPanel to select a custom output directory
+    // MARK: - Output Directory
+
     private func selectOutputDirectory() {
         let panel = NSOpenPanel()
         panel.title = "Select Output Directory"
@@ -262,14 +284,60 @@ struct GeneralSettingsView: View {
         }
     }
 
-    /// Maps a character to a key code for common keys.
-    private func keyCode(for char: Character) -> UInt16? {
-        let map: [Character: UInt16] = [
-            "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9,
-            "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17, "u": 32, "i": 34,
-            "o": 31, "p": 35, "l": 37, "j": 38, "k": 40, "n": 45, "m": 46,
-        ]
-        return map[char]
+    // MARK: - Shortcut Recording
+
+    private func startRecordingShortcut() {
+        guard !isRecordingShortcut else { return }
+        isRecordingShortcut = true
+
+        recordingMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // ESC cancels
+            if event.keyCode == 53 {
+                stopRecordingShortcut()
+                return nil
+            }
+
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let hasModifier = !flags.intersection([.command, .option, .control, .shift]).isEmpty
+
+            // Require at least one modifier key
+            guard hasModifier else { return nil }
+
+            globalShortcut?.updateShortcut(keyCode: event.keyCode, modifierFlags: flags)
+            showConflictWarning = Self.isKnownSystemShortcut(keyCode: event.keyCode, flags: flags)
+            stopRecordingShortcut()
+            return nil
+        }
+    }
+
+    private func stopRecordingShortcut() {
+        if let monitor = recordingMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        recordingMonitor = nil
+        isRecordingShortcut = false
+    }
+
+    // MARK: - Conflict Detection
+
+    /// Known macOS system shortcuts (best-effort).
+    private static let knownSystemShortcuts: [(keyCode: UInt16, flags: NSEvent.ModifierFlags)] = [
+        (12, [.command]),           // Cmd+Q
+        (13, [.command]),           // Cmd+W
+        (4, [.command]),            // Cmd+H
+        (46, [.command]),           // Cmd+M
+        (8, [.command]),            // Cmd+C
+        (9, [.command]),            // Cmd+V
+        (7, [.command]),            // Cmd+X
+        (6, [.command]),            // Cmd+Z
+        (0, [.command]),            // Cmd+A
+        (1, [.command]),            // Cmd+S
+        (49, [.command]),           // Cmd+Space
+        (48, [.command]),           // Cmd+Tab
+    ]
+
+    private static func isKnownSystemShortcut(keyCode: UInt16, flags: NSEvent.ModifierFlags) -> Bool {
+        knownSystemShortcuts.contains { $0.keyCode == keyCode && $0.flags == flags }
     }
 }
 
