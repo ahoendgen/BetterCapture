@@ -107,10 +107,12 @@ struct MenuBarView: View {
             // Settings Sections (no divider between them - section headers provide separation)
             VideoSettingsSection(settings: viewModel.settings)
 
-            PresenterOverlaySettingsSection(
-                settings: viewModel.settings,
-                cameraDeviceService: viewModel.cameraDeviceService
-            )
+            if viewModel.settings.recordVideo {
+                PresenterOverlaySettingsSection(
+                    settings: viewModel.settings,
+                    cameraDeviceService: viewModel.cameraDeviceService
+                )
+            }
 
             AudioSettingsSection(
                 settings: viewModel.settings,

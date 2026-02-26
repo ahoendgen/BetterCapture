@@ -135,6 +135,21 @@ enum FrameRate: Int, CaseIterable, Identifiable {
 @Observable
 final class SettingsStore {
 
+    // MARK: - Recording Mode
+
+    /// Whether to record video in addition to audio. When disabled, only WAV files are produced.
+    var recordVideo: Bool {
+        get {
+            access(keyPath: \.recordVideo)
+            return UserDefaults.standard.object(forKey: "recordVideo") as? Bool ?? false
+        }
+        set {
+            withMutation(keyPath: \.recordVideo) {
+                UserDefaults.standard.set(newValue, forKey: "recordVideo")
+            }
+        }
+    }
+
     // MARK: - Video Settings
 
     var frameRate: FrameRate {

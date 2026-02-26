@@ -105,6 +105,7 @@ final class RecorderViewModel {
     private var inputWavURL: URL?
     private var outputWavURL: URL?
     private var hookTask: Task<Void, Never>?
+    private var isRecordingVideo = false
 
     // MARK: - Initialization
 
@@ -121,7 +122,6 @@ final class RecorderViewModel {
         self.assetWriter = AssetWriter()
 
         let mux = SampleBufferMultiplexer()
-        mux.assetWriter = assetWriter
         mux.outputWavWriter = outputWavWriter
         mux.inputWavWriter = inputWavWriter
         self.multiplexer = mux
@@ -240,8 +240,9 @@ final class RecorderViewModel {
         do {
             state = .recording
             lastError = nil
+            isRecordingVideo = settings.recordVideo
 
-            logger.info("Starting recording sequence...")
+            logger.info("Starting recording sequence (video: \(self.isRecordingVideo))...")
 
             // Generate session identifiers
             let timestamp = Self.generateTimestamp()
@@ -254,22 +255,32 @@ final class RecorderViewModel {
             await previewService.stopPreview()
             logger.info("Live preview stopped")
 
-            // Determine video size from filter
-            if let filter = selectedContentFilter {
-                videoSize = await getContentSize(from: filter)
-            }
-            logger.info("Video size: \(self.videoSize.width)x\(self.videoSize.height)")
-
             // Access security-scoped output directory before writing
             _ = settings.startAccessingOutputDirectory()
 
             let outputDir = settings.outputDirectory
 
-            // Setup asset writer
-            let videoOutputURL = settings.generateOutputURL()
-            try assetWriter.setup(url: videoOutputURL, settings: settings, videoSize: videoSize)
-            try assetWriter.startWriting()
-            logger.info("AssetWriter ready")
+            if isRecordingVideo {
+                // Determine video size from filter
+                if let filter = selectedContentFilter {
+                    videoSize = await getContentSize(from: filter)
+                }
+                logger.info("Video size: \(self.videoSize.width)x\(self.videoSize.height)")
+
+                // Setup asset writer and wire to multiplexer
+                let videoOutputURL = settings.generateOutputURL()
+                try assetWriter.setup(url: videoOutputURL, settings: settings, videoSize: videoSize)
+                try assetWriter.startWriting()
+                multiplexer.assetWriter = assetWriter
+                logger.info("AssetWriter ready")
+
+                // Start camera for Presenter Overlay before capture so the system detects it
+                if settings.presenterOverlayEnabled {
+                    await cameraSession.start(deviceID: settings.selectedCameraID)
+                }
+            } else {
+                multiplexer.assetWriter = nil
+            }
 
             // Setup WAV writers for enabled audio sources
             if settings.captureSystemAudio {
@@ -290,14 +301,10 @@ final class RecorderViewModel {
                 inputWavURL = nil
             }
 
-            // Start camera for Presenter Overlay before capture so the system detects it
-            if settings.presenterOverlayEnabled {
-                await cameraSession.start(deviceID: settings.selectedCameraID)
-            }
-
-            // Start capture with the calculated video size
+            // Start capture (video size only matters when recording video)
+            let captureSize = isRecordingVideo ? videoSize : CGSize(width: 2, height: 2)
             logger.info("Starting capture engine...")
-            try await captureEngine.startCapture(with: settings, videoSize: videoSize, sourceRect: selectedSourceRect)
+            try await captureEngine.startCapture(with: settings, videoSize: captureSize, sourceRect: isRecordingVideo ? selectedSourceRect : nil)
 
             // Start timer
             startTimer()
@@ -307,9 +314,13 @@ final class RecorderViewModel {
         } catch {
             state = .idle
             lastError = error
+            if isRecordingVideo {
+                assetWriter.cancel()
+                multiplexer.assetWriter = nil
+                cameraSession.stop()
+            }
             outputWavWriter.cancel()
             inputWavWriter.cancel()
-            cameraSession.stop()
             selectionBorderFrame.dismiss()
             settings.stopAccessingOutputDirectory()
             logger.error("Failed to start recording: \(error.localizedDescription)")
@@ -330,17 +341,23 @@ final class RecorderViewModel {
         do {
             // Stop capture and camera session
             try await captureEngine.stopCapture()
-            cameraSession.stop()
-            isPresenterOverlayActive = false
+            if isRecordingVideo {
+                cameraSession.stop()
+                isPresenterOverlayActive = false
+            }
 
-            // Finalize video file
-            let videoURL = try await assetWriter.finishWriting()
+            // Finalize video file (only when video was recorded)
+            var videoURL: URL?
+            if isRecordingVideo {
+                videoURL = try await assetWriter.finishWriting()
+                multiplexer.assetWriter = nil
+            }
 
             // Finalize WAV files
             outputWavWriter.finishWriting()
             inputWavWriter.finishWriting()
 
-            logger.info("Recording stopped and saved to: \(videoURL.lastPathComponent)")
+            logger.info("Recording stopped\(videoURL.map { " and saved to: \($0.lastPathComponent)" } ?? " (audio-only)")")
 
             // Write session metadata
             let outputDir = settings.outputDirectory
@@ -361,6 +378,9 @@ final class RecorderViewModel {
 
             // Brief delay to ensure screen sharing mode has fully stopped before sending notification
             try? await Task.sleep(for: .milliseconds(100))
+
+            // The notification references either the video file or the output directory
+            let notificationFileURL = videoURL ?? outputDir
 
             // Run hooks if any are configured
             let config = hookStore.configuration
@@ -388,14 +408,14 @@ final class RecorderViewModel {
                     logger.info("Hooks completed: \(results.filter { !$0.skipped }.count) executed")
 
                     state = .idle
-                    notificationService.sendRecordingSavedNotification(fileURL: videoURL)
+                    notificationService.sendRecordingSavedNotification(fileURL: notificationFileURL)
                     settings.stopAccessingOutputDirectory()
                     clearSessionState()
                 }
             } else {
                 state = .idle
                 recordingDuration = 0
-                notificationService.sendRecordingSavedNotification(fileURL: videoURL)
+                notificationService.sendRecordingSavedNotification(fileURL: notificationFileURL)
                 settings.stopAccessingOutputDirectory()
                 clearSessionState()
             }
@@ -403,7 +423,10 @@ final class RecorderViewModel {
         } catch {
             state = .idle
             lastError = error
-            assetWriter.cancel()
+            if isRecordingVideo {
+                assetWriter.cancel()
+                multiplexer.assetWriter = nil
+            }
             outputWavWriter.cancel()
             inputWavWriter.cancel()
             settings.stopAccessingOutputDirectory()
@@ -487,6 +510,7 @@ final class RecorderViewModel {
         inputWavURL = nil
         outputWavURL = nil
         hookTask = nil
+        isRecordingVideo = false
     }
 
     /// Generates a timestamp string in `yyyy-MM-dd_HH-mm-ss` format.

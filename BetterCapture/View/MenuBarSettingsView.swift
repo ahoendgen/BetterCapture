@@ -423,19 +423,24 @@ struct MenuBarExpandableSection<Content: View>: View {
 struct VideoSettingsSection: View {
     @Bindable var settings: SettingsStore
 
+    private var videoDisabled: Bool { !settings.recordVideo }
+
     var body: some View {
         VStack(spacing: 0) {
             SectionHeader(title: "Video")
 
+            MenuBarToggle(name: "Record Video", isOn: $settings.recordVideo)
+
             // Content Filter Section
             MenuBarExpandableSection(title: "Content Filter") {
-                MenuBarToggle(name: "Show Cursor", isOn: $settings.showCursor)
-                MenuBarToggle(name: "Show Wallpaper", isOn: $settings.showWallpaper)
-                MenuBarToggle(name: "Show Menu Bar", isOn: $settings.showMenuBar)
-                MenuBarToggle(name: "Show Dock", isOn: $settings.showDock)
-                MenuBarToggle(name: "Show Window Shadows", isOn: $settings.showWindowShadows)
-                MenuBarToggle(name: "Show BetterCapture", isOn: $settings.showBetterCapture)
+                MenuBarToggle(name: "Show Cursor", isOn: $settings.showCursor, isDisabled: videoDisabled)
+                MenuBarToggle(name: "Show Wallpaper", isOn: $settings.showWallpaper, isDisabled: videoDisabled)
+                MenuBarToggle(name: "Show Menu Bar", isOn: $settings.showMenuBar, isDisabled: videoDisabled)
+                MenuBarToggle(name: "Show Dock", isOn: $settings.showDock, isDisabled: videoDisabled)
+                MenuBarToggle(name: "Show Window Shadows", isOn: $settings.showWindowShadows, isDisabled: videoDisabled)
+                MenuBarToggle(name: "Show BetterCapture", isOn: $settings.showBetterCapture, isDisabled: videoDisabled)
             }
+            .disabled(videoDisabled)
 
             // Frame Rate Picker
             MenuBarExpandablePicker(
@@ -443,6 +448,7 @@ struct VideoSettingsSection: View {
                 selection: $settings.frameRate,
                 options: FrameRate.allCases.map { ($0, $0.displayName) }
             )
+            .disabled(videoDisabled)
 
             // Video Codec Picker (shows all codecs, disables incompatible ones)
             MenuBarExpandablePicker(
@@ -458,6 +464,7 @@ struct VideoSettingsSection: View {
                     )
                 }
             )
+            .disabled(videoDisabled)
 
             // Container Format Picker
             MenuBarExpandablePicker(
@@ -465,19 +472,20 @@ struct VideoSettingsSection: View {
                 selection: $settings.containerFormat,
                 options: ContainerFormat.allCases.map { ($0, $0.rawValue.uppercased()) }
             )
+            .disabled(videoDisabled)
 
             // Alpha Channel Toggle (disabled if codec doesn't support or container doesn't support)
             MenuBarToggle(
                 name: "Capture Alpha Channel",
                 isOn: $settings.captureAlphaChannel,
-                isDisabled: !settings.videoCodec.canToggleAlpha || !settings.containerFormat.supportsAlphaChannel
+                isDisabled: videoDisabled || !settings.videoCodec.canToggleAlpha || !settings.containerFormat.supportsAlphaChannel
             )
 
             // HDR Recording Toggle (disabled for codecs that don't support HDR)
             MenuBarToggle(
                 name: "HDR Recording",
                 isOn: $settings.captureHDR,
-                isDisabled: !settings.videoCodec.supportsHDR
+                isDisabled: videoDisabled || !settings.videoCodec.supportsHDR
             )
         }
     }

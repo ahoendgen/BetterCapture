@@ -139,8 +139,10 @@ final class CaptureEngine: NSObject {
             throw CaptureError.failedToCreateStream
         }
 
-        try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: videoSampleQueue)
-        logger.info("Added screen output")
+        if settings.recordVideo {
+            try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: videoSampleQueue)
+            logger.info("Added screen output")
+        }
 
         if settings.captureSystemAudio {
             try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioSampleQueue)
@@ -193,27 +195,48 @@ final class CaptureEngine: NSObject {
     private func createStreamConfiguration(from settings: SettingsStore, contentSize: CGSize, sourceRect: CGRect? = nil) -> SCStreamConfiguration {
         let config = SCStreamConfiguration()
 
-        // Set output dimensions - required for proper capture
-        config.width = Int(contentSize.width)
-        config.height = Int(contentSize.height)
+        if settings.recordVideo {
+            // Set output dimensions - required for proper capture
+            config.width = Int(contentSize.width)
+            config.height = Int(contentSize.height)
 
-        // Set source rect for area selection (only works with display captures)
-        if let sourceRect {
-            config.sourceRect = sourceRect
-            logger.info("Source rect set: \(sourceRect.origin.x),\(sourceRect.origin.y) \(sourceRect.width)x\(sourceRect.height)")
-        }
+            // Set source rect for area selection (only works with display captures)
+            if let sourceRect {
+                config.sourceRect = sourceRect
+                logger.info("Source rect set: \(sourceRect.origin.x),\(sourceRect.origin.y) \(sourceRect.width)x\(sourceRect.height)")
+            }
 
-        // Frame rate - native uses display sync (1/120 timescale)
-        if settings.frameRate == .native {
-            config.minimumFrameInterval = CMTime(value: 1, timescale: 120)
+            // Frame rate - native uses display sync (1/120 timescale)
+            if settings.frameRate == .native {
+                config.minimumFrameInterval = CMTime(value: 1, timescale: 120)
+            } else {
+                config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(settings.frameRate.rawValue))
+            }
+
+            // Cursor visibility
+            config.showsCursor = settings.showCursor
+
+            // Presenter Overlay: always show the alert so the user knows overlay is available
+            if settings.presenterOverlayEnabled {
+                config.presenterOverlayPrivacyAlertSetting = .always
+            }
+
+            // Configure pixel format and dynamic range based on HDR setting
+            if settings.captureHDR && settings.videoCodec.supportsHDR {
+                config.pixelFormat = kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+                config.captureDynamicRange = .hdrLocalDisplay
+            } else {
+                config.pixelFormat = kCVPixelFormatType_32BGRA
+                config.captureDynamicRange = .SDR
+            }
         } else {
-            config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(settings.frameRate.rawValue))
+            // Audio-only: minimal video config
+            config.width = 2
+            config.height = 2
+            config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
         }
 
-        // Cursor visibility
-        config.showsCursor = settings.showCursor
-
-        // System audio settings
+        // System audio settings (always configured)
         config.capturesAudio = settings.captureSystemAudio
         config.sampleRate = 48000
         config.channelCount = 2
@@ -222,22 +245,6 @@ final class CaptureEngine: NSObject {
         config.captureMicrophone = settings.captureMicrophone
         if let microphoneID = settings.selectedMicrophoneID {
             config.microphoneCaptureDeviceID = microphoneID
-        }
-
-        // Presenter Overlay: always show the alert so the user knows overlay is available
-        if settings.presenterOverlayEnabled {
-            config.presenterOverlayPrivacyAlertSetting = .always
-        }
-
-        // Configure pixel format and dynamic range based on HDR setting
-        if settings.captureHDR && settings.videoCodec.supportsHDR {
-            // HDR: Use 10-bit YCbCr format with HDR dynamic range
-            config.pixelFormat = kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
-            config.captureDynamicRange = .hdrLocalDisplay
-        } else {
-            // SDR: Use 8-bit BGRA format
-            config.pixelFormat = kCVPixelFormatType_32BGRA
-            config.captureDynamicRange = .SDR
         }
 
         return config
