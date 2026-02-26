@@ -11,6 +11,28 @@ import ScreenCaptureKit
 import OSLog
 import os
 
+/// Snapshot of settings needed by AssetWriter, captured on the main actor.
+struct AssetWriterConfig: Sendable {
+    let containerFormat: ContainerFormat
+    let videoCodec: VideoCodec
+    let audioCodec: AudioCodec
+    let captureAlphaChannel: Bool
+    let captureHDR: Bool
+    let captureSystemAudio: Bool
+    let captureMicrophone: Bool
+
+    @MainActor
+    init(from settings: SettingsStore) {
+        self.containerFormat = settings.containerFormat
+        self.videoCodec = settings.videoCodec
+        self.audioCodec = settings.audioCodec
+        self.captureAlphaChannel = settings.captureAlphaChannel
+        self.captureHDR = settings.captureHDR
+        self.captureSystemAudio = settings.captureSystemAudio
+        self.captureMicrophone = settings.captureMicrophone
+    }
+}
+
 /// Service responsible for writing captured media to disk using AVAssetWriter
 final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable {
 
@@ -46,7 +68,7 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
     ///   - url: The output file URL
     ///   - settings: The settings store containing encoding configuration
     ///   - videoSize: The dimensions of the video
-    func setup(url: URL, settings: SettingsStore, videoSize: CGSize) throws {
+    func setup(url: URL, config: AssetWriterConfig, videoSize: CGSize) throws {
         // Ensure output directory exists
         let directory = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -57,7 +79,7 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
         }
 
         // Create asset writer
-        let fileType = settings.containerFormat == .mov ? AVFileType.mov : AVFileType.mp4
+        let fileType = config.containerFormat == .mov ? AVFileType.mov : AVFileType.mp4
         assetWriter = try AVAssetWriter(outputURL: url, fileType: fileType)
 
         guard let assetWriter else {
@@ -65,7 +87,7 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
         }
 
         // Configure video input
-        let videoSettings = createVideoSettings(from: settings, size: videoSize)
+        let videoSettings = createVideoSettings(from: config, size: videoSize)
         videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
         videoInput?.expectsMediaDataInRealTime = true
 
@@ -74,7 +96,7 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
 
             // Create pixel buffer adaptor for appending raw pixel buffers from ScreenCaptureKit
             // Use HDR 10-bit format when HDR is enabled with a compatible codec
-            let pixelFormat: OSType = (settings.captureHDR && settings.videoCodec.supportsHDR)
+            let pixelFormat: OSType = (config.captureHDR && config.videoCodec.supportsHDR)
                 ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
                 : kCVPixelFormatType_32BGRA
 
@@ -90,8 +112,8 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
         }
 
         // Configure audio input for system audio
-        if settings.captureSystemAudio {
-            let audioSettings = createAudioSettings(from: settings)
+        if config.captureSystemAudio {
+            let audioSettings = createAudioSettings(from: config)
             audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
             audioInput?.expectsMediaDataInRealTime = true
 
@@ -101,8 +123,8 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
         }
 
         // Configure microphone input as separate track
-        if settings.captureMicrophone {
-            let micSettings = createAudioSettings(from: settings)
+        if config.captureMicrophone {
+            let micSettings = createAudioSettings(from: config)
             microphoneInput = AVAssetWriterInput(mediaType: .audio, outputSettings: micSettings)
             microphoneInput?.expectsMediaDataInRealTime = true
 
@@ -344,18 +366,18 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
 
     // MARK: - Settings Helpers
 
-    private func createVideoSettings(from settings: SettingsStore, size: CGSize) -> [String: Any] {
+    private func createVideoSettings(from config: AssetWriterConfig, size: CGSize) -> [String: Any] {
         var videoSettings: [String: Any] = [
             AVVideoWidthKey: Int(size.width),
             AVVideoHeightKey: Int(size.height)
         ]
 
-        switch settings.videoCodec {
+        switch config.videoCodec {
         case .h264:
             videoSettings[AVVideoCodecKey] = AVVideoCodecType.h264
 
         case .hevc:
-            if settings.captureAlphaChannel {
+            if config.captureAlphaChannel {
                 videoSettings[AVVideoCodecKey] = AVVideoCodecType.hevcWithAlpha
             } else {
                 videoSettings[AVVideoCodecKey] = AVVideoCodecType.hevc
@@ -369,7 +391,7 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
         }
 
         // Add HDR color space settings for ProRes codecs with HDR enabled
-        if settings.captureHDR && settings.videoCodec.supportsHDR {
+        if config.captureHDR && config.videoCodec.supportsHDR {
             videoSettings[AVVideoColorPropertiesKey] = [
                 AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_2020,
                 AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_2100_HLG,
@@ -380,8 +402,8 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
         return videoSettings
     }
 
-    private func createAudioSettings(from settings: SettingsStore) -> [String: Any] {
-        switch settings.audioCodec {
+    private func createAudioSettings(from config: AssetWriterConfig) -> [String: Any] {
+        switch config.audioCodec {
         case .aac:
             return [
                 AVFormatIDKey: kAudioFormatMPEG4AAC,

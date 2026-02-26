@@ -269,7 +269,7 @@ final class RecorderViewModel {
 
                 // Setup asset writer and wire to multiplexer
                 let videoOutputURL = settings.generateOutputURL()
-                try assetWriter.setup(url: videoOutputURL, settings: settings, videoSize: videoSize)
+                try assetWriter.setup(url: videoOutputURL, config: AssetWriterConfig(from: settings), videoSize: videoSize)
                 try assetWriter.startWriting()
                 multiplexer.assetWriter = assetWriter
                 logger.info("AssetWriter ready")

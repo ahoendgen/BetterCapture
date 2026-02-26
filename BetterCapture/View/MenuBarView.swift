@@ -331,7 +331,7 @@ struct ContentSelectionButton: View {
     }
 
     private var buttonLabel: String {
-        hasActiveSelection ? "Change \(mode.label.split(separator: " ").last, default: "Content")..." : "\(mode.label)..."
+        hasActiveSelection ? "Change \(mode.label.split(separator: " ").last ?? "Content")..." : "\(mode.label)..."
     }
 
     var body: some View {
