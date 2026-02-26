@@ -1,9 +1,15 @@
+> **Personal fork of [BetterCapture](https://github.com/jsattler/BetterCapture) by [@ahoendgen](https://github.com/ahoendgen)**
+>
+> This is not a standalone project. It's my personal, customized variant of BetterCapture — a way to quickly implement features I need for my daily workflows without waiting for upstream releases. Changes that make sense for the broader community may be contributed back to the original project.
+
+---
+
 <p align="center">
   <img src="website/public/bettercapture-header.png" alt="BetterCapture Header">
 </p>
 
 <p align="center">
-    The macOS screen recorder for the rest of us - always free and open source with a native look and feel 📺 
+    The macOS screen recorder for the rest of us - always free and open source with a native look and feel 📺
 </p>
 
 <p align="center">
