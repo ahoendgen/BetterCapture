@@ -21,6 +21,7 @@ final class RecorderViewModel {
         case idle
         case recording
         case stopping
+        case executingHooks
     }
 
     // MARK: - Published Properties
@@ -76,9 +77,16 @@ final class RecorderViewModel {
     let previewService: PreviewService
     let notificationService: NotificationService
     let permissionService: PermissionService
+    let hookStore: HookStore
+    let globalShortcut: GlobalShortcutService
     private let captureEngine: CaptureEngine
     private let assetWriter: AssetWriter
     private let cameraSession = CameraSession()
+
+    // WAV audio writers
+    private let outputWavWriter = AudioTrackWriter()
+    private let inputWavWriter = AudioTrackWriter()
+    private let multiplexer: SampleBufferMultiplexer
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "BetterCapture", category: "RecorderViewModel")
 
@@ -90,6 +98,14 @@ final class RecorderViewModel {
     private let areaSelectionOverlay = AreaSelectionOverlay()
     private let selectionBorderFrame = SelectionBorderFrame()
 
+    // Recording session tracking
+    private var recordingTimestamp: String?
+    private var recordingSessionID: UUID?
+    private var recordingStartDate: Date?
+    private var inputWavURL: URL?
+    private var outputWavURL: URL?
+    private var hookTask: Task<Void, Never>?
+
     // MARK: - Initialization
 
     init() {
@@ -99,12 +115,28 @@ final class RecorderViewModel {
         self.previewService = PreviewService()
         self.notificationService = NotificationService(settings: settings)
         self.permissionService = PermissionService()
+        self.hookStore = HookStore()
+        self.globalShortcut = GlobalShortcutService()
         self.captureEngine = CaptureEngine()
         self.assetWriter = AssetWriter()
 
+        let mux = SampleBufferMultiplexer()
+        mux.assetWriter = assetWriter
+        mux.outputWavWriter = outputWavWriter
+        mux.inputWavWriter = inputWavWriter
+        self.multiplexer = mux
+
         captureEngine.delegate = self
-        captureEngine.sampleBufferDelegate = assetWriter
+        captureEngine.sampleBufferDelegate = multiplexer
         previewService.delegate = self
+
+        // Wire global shortcut to toggle recording
+        globalShortcut.onToggle = { [weak self] in
+            guard let self else { return }
+            Task {
+                await self.toggleRecording()
+            }
+        }
     }
 
     // MARK: - Permission Methods
@@ -211,6 +243,12 @@ final class RecorderViewModel {
 
             logger.info("Starting recording sequence...")
 
+            // Generate session identifiers
+            let timestamp = Self.generateTimestamp()
+            recordingTimestamp = timestamp
+            recordingSessionID = UUID()
+            recordingStartDate = Date()
+
             // Stop any active live preview before starting recording
             logger.info("Stopping any active live preview...")
             await previewService.stopPreview()
@@ -225,11 +263,32 @@ final class RecorderViewModel {
             // Access security-scoped output directory before writing
             _ = settings.startAccessingOutputDirectory()
 
+            let outputDir = settings.outputDirectory
+
             // Setup asset writer
-            let outputURL = settings.generateOutputURL()
-            try assetWriter.setup(url: outputURL, settings: settings, videoSize: videoSize)
+            let videoOutputURL = settings.generateOutputURL()
+            try assetWriter.setup(url: videoOutputURL, settings: settings, videoSize: videoSize)
             try assetWriter.startWriting()
             logger.info("AssetWriter ready")
+
+            // Setup WAV writers for enabled audio sources
+            if settings.captureSystemAudio {
+                let wavURL = Self.uniqueURL(directory: outputDir, name: "\(timestamp)_output", ext: "wav")
+                try outputWavWriter.setup(url: wavURL, channelCount: 2)
+                outputWavURL = wavURL
+                logger.info("Output WAV writer ready: \(wavURL.lastPathComponent)")
+            } else {
+                outputWavURL = nil
+            }
+
+            if settings.captureMicrophone {
+                let wavURL = Self.uniqueURL(directory: outputDir, name: "\(timestamp)_input", ext: "wav")
+                try inputWavWriter.setup(url: wavURL, channelCount: 1)
+                inputWavURL = wavURL
+                logger.info("Input WAV writer ready: \(wavURL.lastPathComponent)")
+            } else {
+                inputWavURL = nil
+            }
 
             // Start camera for Presenter Overlay before capture so the system detects it
             if settings.presenterOverlayEnabled {
@@ -248,6 +307,8 @@ final class RecorderViewModel {
         } catch {
             state = .idle
             lastError = error
+            outputWavWriter.cancel()
+            inputWavWriter.cancel()
             cameraSession.stop()
             selectionBorderFrame.dismiss()
             settings.stopAccessingOutputDirectory()
@@ -263,35 +324,111 @@ final class RecorderViewModel {
         stopTimer()
         selectionBorderFrame.dismiss()
 
+        let endTimestamp = Self.generateTimestamp()
+        let duration = recordingStartDate.map { Date().timeIntervalSince($0) } ?? recordingDuration
+
         do {
             // Stop capture and camera session
             try await captureEngine.stopCapture()
             cameraSession.stop()
             isPresenterOverlayActive = false
 
-            // Finalize file
-            let outputURL = try await assetWriter.finishWriting()
+            // Finalize video file
+            let videoURL = try await assetWriter.finishWriting()
 
-            state = .idle
-            recordingDuration = 0
+            // Finalize WAV files
+            outputWavWriter.finishWriting()
+            inputWavWriter.finishWriting()
 
-            logger.info("Recording stopped and saved to: \(outputURL.lastPathComponent)")
+            logger.info("Recording stopped and saved to: \(videoURL.lastPathComponent)")
+
+            // Write session metadata
+            let outputDir = settings.outputDirectory
+            if let ts = recordingTimestamp, let sessionID = recordingSessionID {
+                let startTS = ts
+                RecordingMetadataWriter.writeSessionMeta(
+                    to: outputDir,
+                    timestamp: ts,
+                    sessionID: sessionID,
+                    timestampStart: startTS,
+                    timestampEnd: endTimestamp,
+                    durationSeconds: duration,
+                    inputWavURL: inputWavURL,
+                    outputWavURL: outputWavURL,
+                    videoFileURL: videoURL
+                )
+            }
 
             // Brief delay to ensure screen sharing mode has fully stopped before sending notification
             try? await Task.sleep(for: .milliseconds(100))
 
-            // Send notification
-            notificationService.sendRecordingSavedNotification(fileURL: outputURL)
+            // Run hooks if any are configured
+            let config = hookStore.configuration
+            let enabledHooks = config.hooks.filter(\.isEnabled)
+            if !enabledHooks.isEmpty,
+               let ts = recordingTimestamp,
+               let sessionID = recordingSessionID {
 
-            settings.stopAccessingOutputDirectory()
+                state = .executingHooks
+                recordingDuration = 0
+
+                let context = HookRunContext(
+                    inputWavURL: inputWavURL,
+                    outputWavURL: outputWavURL,
+                    recordingDirectory: outputDir,
+                    timestampStart: ts,
+                    timestampEnd: endTimestamp,
+                    sessionID: sessionID,
+                    hookCount: enabledHooks.count
+                )
+
+                hookTask = Task {
+                    let results = await HookRunner.runHooks(config, context: context)
+                    RecordingMetadataWriter.writeHookResults(to: outputDir, timestamp: ts, results: results)
+                    logger.info("Hooks completed: \(results.filter { !$0.skipped }.count) executed")
+
+                    state = .idle
+                    notificationService.sendRecordingSavedNotification(fileURL: videoURL)
+                    settings.stopAccessingOutputDirectory()
+                    clearSessionState()
+                }
+            } else {
+                state = .idle
+                recordingDuration = 0
+                notificationService.sendRecordingSavedNotification(fileURL: videoURL)
+                settings.stopAccessingOutputDirectory()
+                clearSessionState()
+            }
 
         } catch {
             state = .idle
             lastError = error
             assetWriter.cancel()
+            outputWavWriter.cancel()
+            inputWavWriter.cancel()
             settings.stopAccessingOutputDirectory()
+            clearSessionState()
             notificationService.sendRecordingFailedNotification(error: error)
             logger.error("Failed to stop recording: \(error.localizedDescription)")
+        }
+    }
+
+    /// Cancels any running hooks and returns to idle state.
+    func cancelHooks() {
+        hookTask?.cancel()
+        hookTask = nil
+        state = .idle
+        settings.stopAccessingOutputDirectory()
+        clearSessionState()
+        logger.info("Hooks cancelled by user")
+    }
+
+    /// Toggles recording on/off (for global shortcut).
+    func toggleRecording() async {
+        if isRecording {
+            await stopRecording()
+        } else if canStartRecording {
+            await startRecording()
         }
     }
 
@@ -341,7 +478,39 @@ final class RecorderViewModel {
         recordingStartTime = nil
     }
 
-    // MARK: - Helper Methods
+    // MARK: - Session Helpers
+
+    private func clearSessionState() {
+        recordingTimestamp = nil
+        recordingSessionID = nil
+        recordingStartDate = nil
+        inputWavURL = nil
+        outputWavURL = nil
+        hookTask = nil
+    }
+
+    /// Generates a timestamp string in `yyyy-MM-dd_HH-mm-ss` format.
+    static func generateTimestamp(from date: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        return formatter.string(from: date)
+    }
+
+    /// Returns a unique file URL, appending `_01`, `_02`, etc. if a file already exists.
+    static func uniqueURL(directory: URL, name: String, ext: String) -> URL {
+        let base = directory.appending(path: "\(name).\(ext)")
+        guard FileManager.default.fileExists(atPath: base.path()) else { return base }
+
+        for i in 1...99 {
+            let suffixed = directory.appending(path: "\(name)_\(String(format: "%02d", i)).\(ext)")
+            if !FileManager.default.fileExists(atPath: suffixed.path()) {
+                return suffixed
+            }
+        }
+        return base // fallback
+    }
+
+    // MARK: - Content Size
 
     private func getContentSize(from filter: SCContentFilter) async -> CGSize {
         // If area selection is active, use the source rect dimensions.

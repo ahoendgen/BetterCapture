@@ -28,8 +28,14 @@ struct BetterCaptureApp: App {
 
         // Settings window
         Settings {
-            SettingsView(settings: viewModel.settings, updaterService: updaterService)
+            SettingsView(settings: viewModel.settings, updaterService: updaterService, globalShortcut: viewModel.globalShortcut)
         }
+
+        // Hook editor window
+        Window("Hooks", id: "hooks-editor") {
+            HookSettingsView(hookStore: viewModel.hookStore)
+        }
+        .defaultSize(width: 600, height: 400)
     }
 }
 

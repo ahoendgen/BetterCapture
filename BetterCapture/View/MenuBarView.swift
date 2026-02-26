@@ -12,14 +12,18 @@ import ScreenCaptureKit
 struct MenuBarView: View {
     @Bindable var viewModel: RecorderViewModel
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
     @State private var currentPreview: NSImage?
 
     var body: some View {
         VStack(spacing: 0) {
-            if viewModel.isRecording {
+            switch viewModel.state {
+            case .recording, .stopping:
                 recordingContent
-            } else {
+            case .executingHooks:
+                executingHooksContent
+            case .idle:
                 idleContent
             }
         }
@@ -116,6 +120,11 @@ struct MenuBarView: View {
             MenuBarDivider()
 
             // Bottom Actions
+            MenuBarActionButton(title: "Hooks...", systemImage: "terminal") {
+                NSApplication.shared.activate(ignoringOtherApps: true)
+                openWindow(id: "hooks-editor")
+            }
+
             MenuBarActionButton(title: "Open Output Folder", systemImage: "folder") {
                 let settings = viewModel.settings
                 let didStart = settings.startAccessingOutputDirectory()
@@ -152,6 +161,30 @@ struct MenuBarView: View {
                 }
             }
             .padding(.vertical, 8)
+        }
+    }
+
+    // MARK: - Executing Hooks Content
+
+    private var executingHooksContent: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                ProgressView()
+                    .controlSize(.small)
+
+                Text("Running hooks...")
+                    .font(.system(size: 13, weight: .semibold))
+
+                Spacer()
+
+                Button("Cancel") {
+                    viewModel.cancelHooks()
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.red)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
         }
     }
 }

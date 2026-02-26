@@ -12,11 +12,12 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var settings: SettingsStore
     var updaterService: UpdaterService
+    var globalShortcut: GlobalShortcutService?
 
     var body: some View {
         TabView {
             Tab("General", systemImage: "gearshape") {
-                GeneralSettingsView(settings: settings, updaterService: updaterService)
+                GeneralSettingsView(settings: settings, updaterService: updaterService, globalShortcut: globalShortcut)
             }
 
             Tab("Video", systemImage: "video") {
@@ -159,12 +160,15 @@ struct AudioSettingsView: View {
 struct GeneralSettingsView: View {
     @Bindable var settings: SettingsStore
     var updaterService: UpdaterService
+    var globalShortcut: GlobalShortcutService?
 
     @State private var automaticallyChecksForUpdates: Bool
+    @State private var isRecordingShortcut = false
 
-    init(settings: SettingsStore, updaterService: UpdaterService) {
+    init(settings: SettingsStore, updaterService: UpdaterService, globalShortcut: GlobalShortcutService? = nil) {
         self.settings = settings
         self.updaterService = updaterService
+        self.globalShortcut = globalShortcut
         self._automaticallyChecksForUpdates = State(initialValue: updaterService.automaticallyChecksForUpdates)
     }
 
@@ -205,6 +209,23 @@ struct GeneralSettingsView: View {
                 }
             }
 
+            if let globalShortcut {
+                Section("Global Shortcut") {
+                    LabeledContent("Toggle Recording") {
+                        Button(isRecordingShortcut ? "Press a key..." : globalShortcut.shortcutDescription) {
+                            isRecordingShortcut = true
+                        }
+                        .onKeyPress { press in
+                            guard isRecordingShortcut else { return .ignored }
+                            globalShortcut.keyCode = press.key.character.flatMap { keyCode(for: $0) } ?? globalShortcut.keyCode
+                            isRecordingShortcut = false
+                            return .handled
+                        }
+                    }
+                    .help("Global keyboard shortcut to start/stop recording")
+                }
+            }
+
             Section("Software Updates") {
                 Toggle("Automatically check for updates", isOn: $automaticallyChecksForUpdates)
                     .onChange(of: automaticallyChecksForUpdates) { _, newValue in
@@ -239,6 +260,16 @@ struct GeneralSettingsView: View {
         if panel.runModal() == .OK, let url = panel.url {
             settings.setCustomOutputDirectory(url)
         }
+    }
+
+    /// Maps a character to a key code for common keys.
+    private func keyCode(for char: Character) -> UInt16? {
+        let map: [Character: UInt16] = [
+            "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9,
+            "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17, "u": 32, "i": 34,
+            "o": 31, "p": 35, "l": 37, "j": 38, "k": 40, "n": 45, "m": 46,
+        ]
+        return map[char]
     }
 }
 
