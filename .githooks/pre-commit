@@ -7,7 +7,7 @@ PATTERN='^[0-9]{4}-[0-9]{2}-[0-9]{2}_[a-z0-9][a-z0-9-]*\.md$'
 
 errors=0
 
-for file in $(git diff --cached --name-only --diff-filter=ACR -- 'plans/*.md'); do
+for file in $(git diff --cached --name-only --diff-filter=ACR -- 'plans/*.md' 'plans/done/*.md'); do
     basename=$(basename "$file")
     if ! echo "$basename" | grep -qE "$PATTERN"; then
         echo "ERROR: Plan file does not match naming convention: $file"
