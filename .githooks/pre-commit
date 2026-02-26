@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook: Validate plan filenames match yyyy-mm-dd_name-of-the-plan.md
+#
+
+PATTERN='^[0-9]{4}-[0-9]{2}-[0-9]{2}_[a-z0-9][a-z0-9-]*\.md$'
+
+errors=0
+
+for file in $(git diff --cached --name-only --diff-filter=ACR -- 'plans/*.md'); do
+    basename=$(basename "$file")
+    if ! echo "$basename" | grep -qE "$PATTERN"; then
+        echo "ERROR: Plan file does not match naming convention: $file"
+        echo "  Expected: plans/yyyy-mm-dd_name-of-the-plan.md"
+        echo "  Example:  plans/2026-02-26_dual-audio-wav-hooks.md"
+        errors=$((errors + 1))
+    fi
+done
+
+if [ "$errors" -gt 0 ]; then
+    echo ""
+    echo "Commit rejected: $errors plan file(s) with invalid names."
+    exit 1
+fi
