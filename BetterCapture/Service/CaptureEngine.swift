@@ -43,6 +43,7 @@ final class CaptureEngine: NSObject {
 
     private var stream: SCStream?
     private let picker = SCContentSharingPicker.shared
+    private var pickerConfigured = false
     private let contentFilterService = ContentFilterService()
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "BetterCapture", category: "CaptureEngine")
@@ -56,7 +57,6 @@ final class CaptureEngine: NSObject {
 
     override init() {
         super.init()
-        setupPicker()
     }
 
     // MARK: - Picker Management
@@ -86,7 +86,10 @@ final class CaptureEngine: NSObject {
     ///         appear behind the menu bar popover depending on window levels. If this occurs,
     ///         the user can click outside the menu bar to dismiss it before presenting the picker.
     func presentPicker() {
-        // Activate picker when it's actually needed
+        if !pickerConfigured {
+            setupPicker()
+            pickerConfigured = true
+        }
         picker.isActive = true
         picker.present()
     }

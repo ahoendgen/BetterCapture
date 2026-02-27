@@ -164,6 +164,13 @@ final class RecorderViewModel {
         // Dismiss any existing border frame so it doesn't overlap the selection overlay
         selectionBorderFrame.dismiss()
 
+        // Check screen recording permission before proceeding
+        guard CGPreflightScreenCaptureAccess() else {
+            logger.warning("Screen recording permission not granted, requesting access")
+            CGRequestScreenCaptureAccess()
+            return
+        }
+
         guard let result = await areaSelectionOverlay.present() else {
             logger.info("Area selection cancelled")
             return
@@ -234,6 +241,12 @@ final class RecorderViewModel {
     func startRecording() async {
         guard canStartRecording else {
             logger.warning("Cannot start recording: no content selected or already recording")
+            return
+        }
+
+        guard CGPreflightScreenCaptureAccess() else {
+            logger.warning("Screen recording permission not granted, requesting access")
+            CGRequestScreenCaptureAccess()
             return
         }
 

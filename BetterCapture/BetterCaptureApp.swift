@@ -11,14 +11,14 @@ import SwiftUI
 struct BetterCaptureApp: App {
     @State private var viewModel = RecorderViewModel()
     @State private var updaterService = UpdaterService()
+    @State private var hasRequestedPermissions = false
 
     var body: some Scene {
-        // Menu bar extra - the primary interface
-        // Using .window style to support custom toggle switches
         MenuBarExtra {
             MenuBarView(viewModel: viewModel)
                 .task {
-                    // Request permissions on first app launch
+                    guard !hasRequestedPermissions else { return }
+                    hasRequestedPermissions = true
                     await viewModel.requestPermissionsOnLaunch()
                 }
         } label: {
@@ -26,12 +26,10 @@ struct BetterCaptureApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        // Settings window
         Settings {
             SettingsView(settings: viewModel.settings, updaterService: updaterService, globalShortcut: viewModel.globalShortcut)
         }
 
-        // Hook editor window
         Window("Hooks", id: "hooks-editor") {
             HookSettingsView(hookStore: viewModel.hookStore)
         }

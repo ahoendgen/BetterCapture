@@ -84,6 +84,13 @@ final class GlobalShortcutService {
     // MARK: - Lifecycle
 
     init() {
+        // Monitors are installed lazily via start() to avoid blocking
+        // the MenuBarExtra event loop during app initialization.
+    }
+
+    /// Installs the event monitors. Call once after app startup.
+    func start() {
+        guard globalMonitor == nil else { return }
         installMonitors()
     }
 
