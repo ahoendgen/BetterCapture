@@ -12,12 +12,13 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var settings: SettingsStore
     var updaterService: UpdaterService
+    var loginItemService: LoginItemService
     var globalShortcut: GlobalShortcutService?
 
     var body: some View {
         TabView {
             Tab("General", systemImage: "gearshape") {
-                GeneralSettingsView(settings: settings, updaterService: updaterService, globalShortcut: globalShortcut)
+                GeneralSettingsView(settings: settings, updaterService: updaterService, loginItemService: loginItemService, globalShortcut: globalShortcut)
             }
 
             Tab("Video", systemImage: "video") {
@@ -168,6 +169,7 @@ struct AudioSettingsView: View {
 struct GeneralSettingsView: View {
     @Bindable var settings: SettingsStore
     var updaterService: UpdaterService
+    var loginItemService: LoginItemService
     var globalShortcut: GlobalShortcutService?
 
     @State private var automaticallyChecksForUpdates: Bool
@@ -175,9 +177,10 @@ struct GeneralSettingsView: View {
     @State private var recordingMonitor: Any?
     @State private var showConflictWarning = false
 
-    init(settings: SettingsStore, updaterService: UpdaterService, globalShortcut: GlobalShortcutService? = nil) {
+    init(settings: SettingsStore, updaterService: UpdaterService, loginItemService: LoginItemService, globalShortcut: GlobalShortcutService? = nil) {
         self.settings = settings
         self.updaterService = updaterService
+        self.loginItemService = loginItemService
         self.globalShortcut = globalShortcut
         self._automaticallyChecksForUpdates = State(initialValue: updaterService.automaticallyChecksForUpdates)
     }
@@ -242,6 +245,13 @@ struct GeneralSettingsView: View {
                             .foregroundStyle(.orange)
                     }
                 }
+            }
+
+            Section("Startup") {
+                Toggle("Start on Login", isOn: Binding(
+                    get: { loginItemService.isEnabled },
+                    set: { _ in loginItemService.toggle() }
+                ))
             }
 
             Section("Software Updates") {
@@ -370,5 +380,5 @@ struct AboutSection: View {
 // MARK: - Preview
 
 #Preview {
-    SettingsView(settings: SettingsStore(), updaterService: UpdaterService())
+    SettingsView(settings: SettingsStore(), updaterService: UpdaterService(), loginItemService: LoginItemService())
 }

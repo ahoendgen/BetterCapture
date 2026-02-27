@@ -12,6 +12,7 @@ struct SuperCaptureApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var viewModel = RecorderViewModel()
     @State private var updaterService = UpdaterService()
+    @State private var loginItemService = LoginItemService()
     @State private var hasRequestedPermissions = false
 
     var body: some Scene {
@@ -29,7 +30,7 @@ struct SuperCaptureApp: App {
         .menuBarExtraStyle(.window)
 
         Settings {
-            SettingsView(settings: viewModel.settings, updaterService: updaterService, globalShortcut: viewModel.globalShortcut)
+            SettingsView(settings: viewModel.settings, updaterService: updaterService, loginItemService: loginItemService, globalShortcut: viewModel.globalShortcut)
         }
 
         Window("Hooks", id: "hooks-editor") {
