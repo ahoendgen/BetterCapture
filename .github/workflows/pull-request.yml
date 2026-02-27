@@ -9,8 +9,8 @@ on:
       - '.github/workflows/pull-request.yml'
 
 env:
-  APP_NAME: BetterCapture
-  SCHEME: BetterCapture
+  APP_NAME: SuperCapture
+  SCHEME: SuperCapture
   XCODE_VERSION: '26.0'
 
 jobs:

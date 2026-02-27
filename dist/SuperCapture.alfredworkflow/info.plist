@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>bundleid</key>
+	<string>de.a9g.supercapture.alfred</string>
+	<key>name</key>
+	<string>SuperCapture</string>
+	<key>description</key>
+	<string>Control SuperCapture recording via URL scheme</string>
+	<key>category</key>
+	<string>Productivity</string>
+	<key>createdby</key>
+	<string>SuperCapture</string>
+	<key>readme</key>
+	<string>Control SuperCapture recording:
+- sc → Toggle recording
+- sc start → Start recording
+- sc stop → Stop recording</string>
+	<key>version</key>
+	<string>1.0.0</string>
+	<key>objects</key>
+	<array>
+		<dict>
+			<key>uid</key>
+			<string>A1000000-0000-0000-0000-000000000001</string>
+			<key>type</key>
+			<string>alfred.workflow.input.scriptfilter</string>
+			<key>config</key>
+			<dict>
+				<key>keyword</key>
+				<string>sc</string>
+				<key>title</key>
+				<string>SuperCapture</string>
+				<key>runningsubtext</key>
+				<string>Sending command...</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>script</key>
+				<string>cat &lt;&lt; 'EOF'
+{"items": [
+  {"uid": "toggle", "title": "Toggle Recording", "subtitle": "Start or stop recording", "arg": "toggle", "icon": {"path": "icon.png"}},
+  {"uid": "start", "title": "Start Recording", "subtitle": "Start a new recording", "arg": "start", "icon": {"path": "icon.png"}},
+  {"uid": "stop", "title": "Stop Recording", "subtitle": "Stop the current recording", "arg": "stop", "icon": {"path": "icon.png"}}
+]}
+EOF</string>
+				<key>type</key>
+				<integer>0</integer>
+				<key>alfredfiltersresults</key>
+				<true/>
+				<key>alfredfiltersresultsmatchmode</key>
+				<integer>0</integer>
+				<key>argumenttype</key>
+				<integer>1</integer>
+				<key>withspace</key>
+				<true/>
+				<key>subtext</key>
+				<string>Control SuperCapture recording</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>uid</key>
+			<string>A1000000-0000-0000-0000-000000000002</string>
+			<key>type</key>
+			<string>alfred.workflow.action.openurl</string>
+			<key>config</key>
+			<dict>
+				<key>url</key>
+				<string>supercapture://{query}</string>
+			</dict>
+		</dict>
+	</array>
+	<key>connections</key>
+	<dict>
+		<key>A1000000-0000-0000-0000-000000000001</key>
+		<array>
+			<dict>
+				<key>destinationuid</key>
+				<string>A1000000-0000-0000-0000-000000000002</string>
+				<key>modifiers</key>
+				<integer>0</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitowards</key>
+				<string></string>
+			</dict>
+		</array>
+	</dict>
+	<key>uidata</key>
+	<dict>
+		<key>A1000000-0000-0000-0000-000000000001</key>
+		<dict>
+			<key>xpos</key>
+			<integer>100</integer>
+			<key>ypos</key>
+			<integer>100</integer>
+		</dict>
+		<key>A1000000-0000-0000-0000-000000000002</key>
+		<dict>
+			<key>xpos</key>
+			<integer>400</integer>
+			<key>ypos</key>
+			<integer>100</integer>
+		</dict>
+	</dict>
+</dict>
+</plist>
