@@ -95,6 +95,13 @@ Temporary Items
 *.swp
 *.lock
 *.log
+*.profraw
+
+# Build output
+build/
+
+# Rust
+supercapture-transcribe/target/
 
 # Snippets
 snippets/
