@@ -20,7 +20,7 @@
 	<key>SUEnableInstallerLauncherService</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://github.com/jsattler/BetterCapture/releases/latest/download/appcast.xml</string>
+	<string>https://github.com/ahoendgen/BetterCapture/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>SPARKLE_PUBLIC_KEY</string>
 </dict>

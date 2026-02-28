@@ -381,10 +381,6 @@ struct AboutSection: View {
         Section("About") {
             LabeledContent("Version", value: "v\(appVersion) (supercharged)")
 
-            LabeledContent("Website") {
-                Link("jsattler.github.io/SuperCapture", destination: URL(string: "https://jsattler.github.io/SuperCapture")!)
-            }
-
             LabeledContent("Source Code") {
                 Link("github.com/ahoendgen/BetterCapture", destination: URL(string: "https://github.com/ahoendgen/BetterCapture")!)
             }
