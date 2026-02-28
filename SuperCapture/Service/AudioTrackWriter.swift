@@ -83,14 +83,34 @@ final class AudioTrackWriter: @unchecked Sendable {
         lock.withLockUnchecked {
             guard isWriting, let handle = fileHandle else { return }
 
-            // Get audio buffer list from the sample buffer
+            // Query the required buffer list size first
+            var requiredSize: Int = 0
+            CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+                sampleBuffer,
+                bufferListSizeNeededOut: &requiredSize,
+                bufferListOut: nil,
+                bufferListSize: 0,
+                blockBufferAllocator: nil,
+                blockBufferMemoryAllocator: nil,
+                flags: 0,
+                blockBufferOut: nil
+            )
+
+            guard requiredSize > 0 else { return }
+
+            // Allocate properly sized buffer and extract audio data
+            let audioBufferListMemory = UnsafeMutablePointer<UInt8>.allocate(capacity: requiredSize)
+            defer { audioBufferListMemory.deallocate() }
+
+            let audioBufferListPointer = UnsafeMutableRawPointer(audioBufferListMemory)
+                .bindMemory(to: AudioBufferList.self, capacity: 1)
+
             var blockBuffer: CMBlockBuffer?
-            var audioBufferList = AudioBufferList()
             let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
                 sampleBuffer,
                 bufferListSizeNeededOut: nil,
-                bufferListOut: &audioBufferList,
-                bufferListSize: MemoryLayout<AudioBufferList>.size,
+                bufferListOut: audioBufferListPointer,
+                bufferListSize: requiredSize,
                 blockBufferAllocator: nil,
                 blockBufferMemoryAllocator: nil,
                 flags: 0,
@@ -102,7 +122,7 @@ final class AudioTrackWriter: @unchecked Sendable {
                 return
             }
 
-            let buffer = audioBufferList.mBuffers
+            let buffer = UnsafeMutableAudioBufferListPointer(audioBufferListPointer)[0]
             guard let floatData = buffer.mData else { return }
 
             let floatPointer = floatData.assumingMemoryBound(to: Float.self)

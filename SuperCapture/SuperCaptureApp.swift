@@ -15,13 +15,16 @@ struct SuperCaptureApp: App {
     @State private var loginItemService = LoginItemService()
     @State private var hasRequestedPermissions = false
 
+    init() {
+        appDelegate.viewModel = viewModel
+    }
+
     var body: some Scene {
         MenuBarExtra {
             MenuBarView(viewModel: viewModel)
                 .task {
                     guard !hasRequestedPermissions else { return }
                     hasRequestedPermissions = true
-                    appDelegate.viewModel = viewModel
                     await viewModel.requestPermissionsOnLaunch()
                 }
         } label: {
