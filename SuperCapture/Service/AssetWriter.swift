@@ -74,7 +74,7 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         // Remove existing file if present
-        if FileManager.default.fileExists(atPath: url.path()) {
+        if FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) {
             try FileManager.default.removeItem(at: url)
         }
 

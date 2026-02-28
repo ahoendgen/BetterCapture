@@ -51,10 +51,10 @@ enum RecordingMetadataWriter {
             durationSeconds: durationSeconds,
             appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
             inputWav: inputWavURL.map {
-                .init(path: $0.path(), sampleRate: 48000, channels: 1, bitsPerSample: 16)
+                .init(path: $0.path(percentEncoded: false), sampleRate: 48000, channels: 1, bitsPerSample: 16)
             },
             outputWav: outputWavURL.map {
-                .init(path: $0.path(), sampleRate: 48000, channels: 2, bitsPerSample: 16)
+                .init(path: $0.path(percentEncoded: false), sampleRate: 48000, channels: 2, bitsPerSample: 16)
             },
             videoFile: videoFileURL?.lastPathComponent
         )

@@ -40,7 +40,7 @@ final class HookStore {
     /// Loads the hook configuration from disk. Falls back to empty configuration.
     func load() {
         let url = Self.configFileURL
-        guard FileManager.default.fileExists(atPath: url.path()) else {
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
             logger.info("No hooks.json found, using defaults")
             return
         }

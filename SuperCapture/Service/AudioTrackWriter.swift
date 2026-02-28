@@ -42,13 +42,13 @@ final class AudioTrackWriter: @unchecked Sendable {
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
             // Remove existing file if present
-            if FileManager.default.fileExists(atPath: url.path()) {
+            if FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) {
                 try? FileManager.default.removeItem(at: url)
             }
 
             // Create the file and open a handle
-            FileManager.default.createFile(atPath: url.path(), contents: nil)
-            guard let handle = FileHandle(forWritingAtPath: url.path()) else {
+            FileManager.default.createFile(atPath: url.path(percentEncoded: false), contents: nil)
+            guard let handle = FileHandle(forWritingAtPath: url.path(percentEncoded: false)) else {
                 logger.error("Failed to open file handle for \(url.lastPathComponent)")
                 return
             }

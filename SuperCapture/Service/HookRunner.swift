@@ -164,9 +164,9 @@ enum HookRunner {
 
     private static func buildEnvironment(index: Int, context: HookRunContext) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
-        env["BC_INPUT_WAV"] = context.inputWavURL?.path() ?? ""
-        env["BC_OUTPUT_WAV"] = context.outputWavURL?.path() ?? ""
-        env["BC_DIR"] = context.recordingDirectory.path()
+        env["BC_INPUT_WAV"] = context.inputWavURL?.path(percentEncoded: false) ?? ""
+        env["BC_OUTPUT_WAV"] = context.outputWavURL?.path(percentEncoded: false) ?? ""
+        env["BC_DIR"] = context.recordingDirectory.path(percentEncoded: false)
         env["BC_TS_START"] = context.timestampStart
         env["BC_TS_END"] = context.timestampEnd
         env["BC_SESSION_ID"] = context.sessionID.uuidString

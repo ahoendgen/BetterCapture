@@ -109,7 +109,7 @@ final class NotificationService: NSObject {
 
         // Store the folder URL for opening when notification is clicked
         let folderURL = fileURL.deletingLastPathComponent()
-        content.userInfo = [UserInfoKey.folderURL: folderURL.path()]
+        content.userInfo = [UserInfoKey.folderURL: folderURL.path(percentEncoded: false)]
 
         let request = UNNotificationRequest(
             identifier: UUID().uuidString,

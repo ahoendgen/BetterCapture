@@ -643,11 +643,11 @@ final class RecorderViewModel {
     /// Returns a unique file URL, appending `_01`, `_02`, etc. if a file already exists.
     static func uniqueURL(directory: URL, name: String, ext: String) -> URL {
         let base = directory.appending(path: "\(name).\(ext)")
-        guard FileManager.default.fileExists(atPath: base.path()) else { return base }
+        guard FileManager.default.fileExists(atPath: base.path(percentEncoded: false)) else { return base }
 
         for i in 1...99 {
             let suffixed = directory.appending(path: "\(name)_\(String(format: "%02d", i)).\(ext)")
-            if !FileManager.default.fileExists(atPath: suffixed.path()) {
+            if !FileManager.default.fileExists(atPath: suffixed.path(percentEncoded: false)) {
                 return suffixed
             }
         }
