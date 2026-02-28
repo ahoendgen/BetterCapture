@@ -414,7 +414,7 @@ final class SettingsStore {
 
     /// The default output directory (Movies/SuperCapture)
     var defaultOutputDirectory: URL {
-        URL.homeDirectory.appending(path: "Movies/SuperCapture")
+        URL.documentsDirectory.appending(path: "SuperCapture")
     }
 
     /// Security-scoped bookmark data for the custom output directory
@@ -430,13 +430,27 @@ final class SettingsStore {
         }
     }
 
+    /// Subdirectory pattern appended to the output directory.
+    /// Supports `$YEAR`, `$MONTH`, `$DAY` placeholders.
+    var outputSubdirectoryPattern: String {
+        get {
+            access(keyPath: \.outputSubdirectoryPattern)
+            return UserDefaults.standard.string(forKey: "outputSubdirectoryPattern") ?? "$YEAR"
+        }
+        set {
+            withMutation(keyPath: \.outputSubdirectoryPattern) {
+                UserDefaults.standard.set(newValue, forKey: "outputSubdirectoryPattern")
+            }
+        }
+    }
+
     /// Whether a custom output directory has been set
     var hasCustomOutputDirectory: Bool {
         customOutputDirectoryBookmark != nil
     }
 
-    /// The current output directory, using custom path if set
-    var outputDirectory: URL {
+    /// The base output directory without subdirectory pattern applied.
+    var baseOutputDirectory: URL {
         guard let bookmarkData = customOutputDirectoryBookmark else {
             return defaultOutputDirectory
         }
@@ -491,6 +505,28 @@ final class SettingsStore {
         }
     }
 
+    /// The resolved output directory with subdirectory placeholders expanded.
+    var outputDirectory: URL {
+        let base = baseOutputDirectory
+        let pattern = outputSubdirectoryPattern.trimmingCharacters(in: .whitespaces)
+        guard !pattern.isEmpty else { return base }
+
+        let now = Date()
+        let calendar = Calendar.current
+        let year = String(format: "%04d", calendar.component(.year, from: now))
+        let month = String(format: "%02d", calendar.component(.month, from: now))
+        let day = String(format: "%02d", calendar.component(.day, from: now))
+
+        let resolved = pattern
+            .replacing("$YEAR", with: year)
+            .replacing("$MONTH", with: month)
+            .replacing("$DAY", with: day)
+
+        let dir = base.appending(path: resolved)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     /// Resets to the default output directory
     func resetOutputDirectory() {
         customOutputDirectoryBookmark = nil
@@ -503,7 +539,7 @@ final class SettingsStore {
         guard customOutputDirectoryBookmark != nil else {
             return true // Default directory doesn't need security scope
         }
-        return outputDirectory.startAccessingSecurityScopedResource()
+        return baseOutputDirectory.startAccessingSecurityScopedResource()
     }
 
     /// Stops accessing the security-scoped output directory resource
@@ -511,7 +547,7 @@ final class SettingsStore {
         guard customOutputDirectoryBookmark != nil else {
             return // Default directory doesn't need security scope
         }
-        outputDirectory.stopAccessingSecurityScopedResource()
+        baseOutputDirectory.stopAccessingSecurityScopedResource()
     }
 
     // MARK: - Private Storage
@@ -563,6 +599,35 @@ final class SettingsStore {
         set {
             withMutation(keyPath: \.audioCodecRaw) {
                 UserDefaults.standard.set(newValue, forKey: "audioCodec")
+            }
+        }
+    }
+
+    // MARK: - Recording
+
+    /// Minimum recording duration in seconds. Shorter recordings are discarded.
+    var minimumRecordingDuration: Int {
+        get {
+            access(keyPath: \.minimumRecordingDuration)
+            return UserDefaults.standard.object(forKey: "minimumRecordingDuration") as? Int ?? 10
+        }
+        set {
+            withMutation(keyPath: \.minimumRecordingDuration) {
+                UserDefaults.standard.set(newValue, forKey: "minimumRecordingDuration")
+            }
+        }
+    }
+
+    // MARK: - Menu Bar
+
+    var discreetMenuBar: Bool {
+        get {
+            access(keyPath: \.discreetMenuBar)
+            return UserDefaults.standard.object(forKey: "discreetMenuBar") as? Bool ?? false
+        }
+        set {
+            withMutation(keyPath: \.discreetMenuBar) {
+                UserDefaults.standard.set(newValue, forKey: "discreetMenuBar")
             }
         }
     }

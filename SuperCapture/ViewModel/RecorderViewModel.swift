@@ -5,6 +5,7 @@
 //  Created by Joshua Sattler on 29.01.26.
 //
 
+import AVFoundation
 import Foundation
 import ScreenCaptureKit
 import AppKit
@@ -386,6 +387,20 @@ final class RecorderViewModel {
 
             logger.info("Recording stopped\(videoURL.map { " and saved to: \($0.lastPathComponent)" } ?? " (audio-only)")")
 
+            // Discard recordings shorter than minimum duration
+            let minDuration = Double(settings.minimumRecordingDuration)
+            if minDuration > 0 && duration < minDuration {
+                logger.info("Recording too short (\(duration)s < \(minDuration)s), discarding")
+                for url in [videoURL, outputWavURL, inputWavURL].compactMap({ $0 }) {
+                    try? FileManager.default.removeItem(at: url)
+                }
+                state = .idle
+                recordingDuration = 0
+                settings.stopAccessingOutputDirectory()
+                clearSessionState()
+                return
+            }
+
             // Write session metadata
             let outputDir = settings.outputDirectory
             if let ts = recordingTimestamp, let sessionID = recordingSessionID {
@@ -429,6 +444,16 @@ final class RecorderViewModel {
                     } catch {
                         logger.error("Transcription failed: \(error.localizedDescription)")
                     }
+                }
+            }
+
+            // Convert WAV to M4A if AAC codec is selected
+            if settings.audioCodec == .aac {
+                if let url = outputWavURL {
+                    outputWavURL = await convertToM4A(source: url)
+                }
+                if let url = inputWavURL {
+                    inputWavURL = await convertToM4A(source: url)
                 }
             }
 
@@ -549,6 +574,34 @@ final class RecorderViewModel {
         recordingTimer?.invalidate()
         recordingTimer = nil
         recordingStartTime = nil
+    }
+
+    // MARK: - Audio Conversion
+
+    /// Converts a WAV file to M4A (AAC) and removes the original.
+    /// Returns the M4A URL on success, or the original URL on failure.
+    private func convertToM4A(source: URL) async -> URL {
+        let destination = source.deletingPathExtension().appendingPathExtension("m4a")
+        let asset = AVURLAsset(url: source)
+
+        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+            logger.error("Failed to create export session for \(source.lastPathComponent)")
+            return source
+        }
+
+        session.outputURL = destination
+        session.outputFileType = .m4a
+
+        await session.export()
+
+        if session.status == .completed {
+            try? FileManager.default.removeItem(at: source)
+            logger.info("Converted \(source.lastPathComponent) → \(destination.lastPathComponent)")
+            return destination
+        }
+
+        logger.error("WAV→M4A conversion failed: \(session.error?.localizedDescription ?? "unknown")")
+        return source
     }
 
     // MARK: - Transcription Helpers

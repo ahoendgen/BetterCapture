@@ -100,6 +100,7 @@ final class NotificationService: NSObject {
     /// Sends a notification for a successfully saved recording
     /// - Parameter fileURL: The URL of the saved recording file
     func sendRecordingSavedNotification(fileURL: URL) {
+        guard !settings.discreetMenuBar else { return }
         let content = UNMutableNotificationContent()
         content.title = "Recording Saved"
         content.body = "Your recording has been saved to \(fileURL.lastPathComponent)"

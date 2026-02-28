@@ -85,9 +85,9 @@ struct MenuBarLabel: View {
 
     var body: some View {
         if viewModel.isRecording {
-            // Render the duration into a fixed-size image so the
-            // NSStatusItem never recalculates its width on each tick.
-            if let image = timerImage {
+            if viewModel.settings.discreetMenuBar {
+                Image(systemName: "microphone")
+            } else if let image = timerImage {
                 Image(nsImage: image)
             }
         } else {

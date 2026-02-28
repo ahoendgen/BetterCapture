@@ -145,21 +145,14 @@ struct AudioSettingsView: View {
             Section("Format") {
                 Picker("Codec", selection: $settings.audioCodec) {
                     ForEach(AudioCodec.allCases) { codec in
-                        let isSupported = settings.containerFormat.supportedAudioCodecs.contains(codec)
-                        if isSupported {
-                            Text(codec.rawValue).tag(codec)
-                        } else {
-                            Text("\(codec.rawValue) (not supported for \(settings.containerFormat.rawValue.uppercased()))")
-                                .foregroundStyle(.secondary)
-                                .tag(codec)
-                        }
+                        Text(codec.rawValue).tag(codec)
                     }
                 }
-                .help("AAC is compressed, PCM is uncompressed lossless (MOV only)")
+                .help("PCM saves as WAV (lossless), AAC saves as M4A (compressed)")
             }
 
             Section {
-                Text("Audio tracks are recorded separately for post-processing flexibility.")
+                Text("Audio tracks are saved as separate files for post-processing flexibility.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -190,9 +183,9 @@ struct GeneralSettingsView: View {
         self._automaticallyChecksForUpdates = State(initialValue: updaterService.automaticallyChecksForUpdates)
     }
 
-    /// Formats the output directory path for display
+    /// Formats the base output directory path for display
     private var displayPath: String {
-        let path = settings.outputDirectory.path(percentEncoded: false)
+        let path = settings.baseOutputDirectory.path(percentEncoded: false)
         let home = FileManager.default.homeDirectoryForCurrentUser.path(percentEncoded: false)
         if path.hasPrefix(home) {
             return "~" + path.dropFirst(home.count)
@@ -224,6 +217,18 @@ struct GeneralSettingsView: View {
                             .truncationMode(.middle)
                     }
                 }
+
+                TextField("Subdirectory", text: $settings.outputSubdirectoryPattern, prompt: Text("e.g. $YEAR/$MONTH/$DAY"))
+                    .help("Placeholders: $YEAR, $MONTH, $DAY")
+
+                Picker("Minimum Duration", selection: $settings.minimumRecordingDuration) {
+                    Text("Off").tag(0)
+                    Text("1 second").tag(1)
+                    Text("3 seconds").tag(3)
+                    Text("5 seconds").tag(5)
+                    Text("10 seconds").tag(10)
+                }
+                .help("Recordings shorter than this are automatically discarded")
             }
 
             if let globalShortcut {
@@ -250,6 +255,11 @@ struct GeneralSettingsView: View {
                             .foregroundStyle(.orange)
                     }
                 }
+            }
+
+            Section("Menu Bar") {
+                Toggle("Discreet Mode", isOn: $settings.discreetMenuBar)
+                    .help("Show a microphone icon instead of the recording timer")
             }
 
             Section("Startup") {
