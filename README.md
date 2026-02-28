@@ -1,6 +1,6 @@
-> **Personal fork of [BetterCapture](https://github.com/jsattler/BetterCapture) by [@ahoendgen](https://github.com/ahoendgen)**
+> **SuperCapture — personal fork of [BetterCapture](https://github.com/jsattler/BetterCapture) by [@ahoendgen](https://github.com/ahoendgen)**
 >
-> This is not a standalone project. It's my personal, customized variant of BetterCapture — a way to quickly implement features I need for my daily workflows without waiting for upstream releases. Changes that make sense for the broader community may be contributed back to the original project.
+> Following my naming tradition, all my personal forks get the "Super" prefix and live on `supercharged` branches. This is not a standalone project — it's my customized variant of BetterCapture with features I need for my daily workflows. Changes that make sense for the broader community may be contributed back to the original project.
 
 ---
 
