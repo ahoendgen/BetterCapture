@@ -4,6 +4,22 @@
 >
 > Check out my other [supercharged forks](https://github.com/ahoendgen/supercharged).
 
+## Supercharged Features
+
+Features added in this fork on top of upstream BetterCapture:
+
+- **Rebranded to SuperCapture** — Custom name, icons, and update feed so it can run side-by-side with upstream.
+- **[Post-recording transcription via Parakeet V3](https://github.com/ahoendgen/BetterCapture/tree/supercharged/supercapture-transcribe)** — Automatic speech-to-text after recording finishes.
+- **Audio-only recording mode** — Optional video toggle to record audio without screen capture.
+- **Dual-audio WAV output** — Separate system and microphone audio tracks.
+- **Post-recording hooks** — Run custom automation after each recording.
+- **Configurable global shortcut** — With conflict detection and clear functionality.
+- **Discreet mode** — Plus output subdirectories, minimum duration filter, and audio codec conversion (multi-format support via symphonia).
+- **Start on login** — Toggle via macOS SMAppService.
+- **[Alfred workflows](https://github.com/ahoendgen/BetterCapture/tree/supercharged/SuperCapture-Alfred)** — Quick access via Alfred.
+- **No upstream update checker** — Independent release cycle.
+- **Stability fixes** — Menu bar hang, race conditions, audio path handling.
+
 ---
 
 <p align="center">
