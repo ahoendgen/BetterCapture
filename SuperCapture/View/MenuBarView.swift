@@ -21,6 +21,8 @@ struct MenuBarView: View {
             switch viewModel.state {
             case .recording, .stopping:
                 recordingContent
+            case .transcribing:
+                transcribingContent
             case .executingHooks:
                 executingHooksContent
             case .idle:
@@ -163,6 +165,24 @@ struct MenuBarView: View {
                 }
             }
             .padding(.vertical, 8)
+        }
+    }
+
+    // MARK: - Transcribing Content
+
+    private var transcribingContent: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                ProgressView(value: viewModel.transcriptionService.progress)
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity)
+
+                Text("Transcribing...")
+                    .font(.system(size: 13, weight: .semibold))
+                    .fixedSize()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
         }
     }
 

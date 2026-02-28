@@ -21,6 +21,7 @@ final class RecorderViewModel {
         case idle
         case recording
         case stopping
+        case transcribing
         case executingHooks
     }
 
@@ -79,6 +80,7 @@ final class RecorderViewModel {
     let permissionService: PermissionService
     let hookStore: HookStore
     let globalShortcut: GlobalShortcutService
+    let transcriptionService: TranscriptionService
     private let captureEngine: CaptureEngine
     private let assetWriter: AssetWriter
     private let cameraSession = CameraSession()
@@ -118,6 +120,7 @@ final class RecorderViewModel {
         self.permissionService = PermissionService()
         self.hookStore = HookStore()
         self.globalShortcut = GlobalShortcutService()
+        self.transcriptionService = TranscriptionService()
         self.captureEngine = CaptureEngine()
         self.assetWriter = AssetWriter()
 
@@ -406,6 +409,29 @@ final class RecorderViewModel {
             // The notification references either the video file or the output directory
             let notificationFileURL = videoURL ?? outputDir
 
+            // Run transcription if enabled
+            if settings.transcribeAfterRecording {
+                state = .transcribing
+                recordingDuration = 0
+
+                var wavFiles: [URL] = []
+                if let url = outputWavURL { wavFiles.append(url) }
+                if let url = inputWavURL { wavFiles.append(url) }
+
+                if !wavFiles.isEmpty, let ts = recordingTimestamp {
+                    do {
+                        let results = try await transcriptionService.transcribe(
+                            files: wavFiles,
+                            idleTimeout: settings.transcriptionModelUnloadTimeout
+                        )
+                        saveTranscriptionResults(results, to: outputDir, timestamp: ts)
+                        logger.info("Transcription completed: \(results.count) tracks")
+                    } catch {
+                        logger.error("Transcription failed: \(error.localizedDescription)")
+                    }
+                }
+            }
+
             // Run hooks if any are configured
             let config = hookStore.configuration
             let enabledHooks = config.hooks.filter(\.isEnabled)
@@ -523,6 +549,23 @@ final class RecorderViewModel {
         recordingTimer?.invalidate()
         recordingTimer = nil
         recordingStartTime = nil
+    }
+
+    // MARK: - Transcription Helpers
+
+    /// Saves transcription results as JSON and plain text files alongside the recording.
+    private func saveTranscriptionResults(_ results: [String: String], to directory: URL, timestamp: String) {
+        // Save structured JSON
+        let jsonURL = Self.uniqueURL(directory: directory, name: "\(timestamp)_transcription", ext: "json")
+        if let data = try? JSONSerialization.data(withJSONObject: results, options: [.prettyPrinted, .sortedKeys]) {
+            try? data.write(to: jsonURL)
+        }
+
+        // Save individual plain text files
+        for (name, text) in results where !text.isEmpty {
+            let txtURL = Self.uniqueURL(directory: directory, name: "\(timestamp)_\(name)", ext: "txt")
+            try? text.write(to: txtURL, atomically: true, encoding: .utf8)
+        }
     }
 
     // MARK: - Session Helpers

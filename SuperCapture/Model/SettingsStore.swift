@@ -567,6 +567,33 @@ final class SettingsStore {
         }
     }
 
+    // MARK: - Transcription Settings
+
+    var transcribeAfterRecording: Bool {
+        get {
+            access(keyPath: \.transcribeAfterRecording)
+            return UserDefaults.standard.object(forKey: "transcribeAfterRecording") as? Bool ?? false
+        }
+        set {
+            withMutation(keyPath: \.transcribeAfterRecording) {
+                UserDefaults.standard.set(newValue, forKey: "transcribeAfterRecording")
+            }
+        }
+    }
+
+    /// Seconds of inactivity before unloading the transcription model (0 = immediately)
+    var transcriptionModelUnloadTimeout: Int {
+        get {
+            access(keyPath: \.transcriptionModelUnloadTimeout)
+            return UserDefaults.standard.object(forKey: "transcriptionModelUnloadTimeout") as? Int ?? 300
+        }
+        set {
+            withMutation(keyPath: \.transcriptionModelUnloadTimeout) {
+                UserDefaults.standard.set(newValue, forKey: "transcriptionModelUnloadTimeout")
+            }
+        }
+    }
+
     // MARK: - Helper Methods
 
     /// Generates a filename based on the current timestamp

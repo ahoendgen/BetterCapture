@@ -13,6 +13,7 @@ struct SettingsView: View {
     @Bindable var settings: SettingsStore
     var updaterService: UpdaterService
     var loginItemService: LoginItemService
+    var transcriptionService: TranscriptionService
     var globalShortcut: GlobalShortcutService?
 
     var body: some View {
@@ -27,6 +28,10 @@ struct SettingsView: View {
 
             Tab("Audio", systemImage: "waveform") {
                 AudioSettingsView(settings: settings)
+            }
+
+            Tab("Transcription", systemImage: "text.word.spacing") {
+                TranscriptionSettingsView(settings: settings, transcriptionService: transcriptionService)
             }
         }
         .frame(width: 500, height: 420)
@@ -377,8 +382,71 @@ struct AboutSection: View {
     }
 }
 
+// MARK: - Transcription Settings
+
+struct TranscriptionSettingsView: View {
+    @Bindable var settings: SettingsStore
+    var transcriptionService: TranscriptionService
+
+    private let timeoutOptions: [(label: String, value: Int)] = [
+        ("Immediately", 0),
+        ("1 minute", 60),
+        ("5 minutes", 300),
+        ("15 minutes", 900),
+        ("30 minutes", 1800),
+    ]
+
+    var body: some View {
+        Form {
+            Section("Transcription") {
+                Toggle("Transcribe after recording", isOn: $settings.transcribeAfterRecording)
+                    .help("Automatically transcribe audio tracks when recording stops")
+
+                Picker("Unload model after", selection: $settings.transcriptionModelUnloadTimeout) {
+                    ForEach(timeoutOptions, id: \.value) { option in
+                        Text(option.label).tag(option.value)
+                    }
+                }
+                .disabled(!settings.transcribeAfterRecording)
+            }
+
+            Section("Status") {
+                LabeledContent("CLI") {
+                    if transcriptionService.isCLIAvailable {
+                        Text("Installed")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Not found")
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                LabeledContent("Model") {
+                    if transcriptionService.isModelAvailable {
+                        Text("Parakeet v3 (int8)")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Not downloaded")
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+
+            if !transcriptionService.isCLIAvailable || !transcriptionService.isModelAvailable {
+                Section {
+                    Text("Install the supercapture-transcribe binary and download the Parakeet v3 model to ~/Library/Application Support/SuperCapture/models/")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+}
+
 // MARK: - Preview
 
 #Preview {
-    SettingsView(settings: SettingsStore(), updaterService: UpdaterService(), loginItemService: LoginItemService())
+    SettingsView(settings: SettingsStore(), updaterService: UpdaterService(), loginItemService: LoginItemService(), transcriptionService: TranscriptionService())
 }

@@ -30,7 +30,7 @@ struct SuperCaptureApp: App {
         .menuBarExtraStyle(.window)
 
         Settings {
-            SettingsView(settings: viewModel.settings, updaterService: updaterService, loginItemService: loginItemService, globalShortcut: viewModel.globalShortcut)
+            SettingsView(settings: viewModel.settings, updaterService: updaterService, loginItemService: loginItemService, transcriptionService: viewModel.transcriptionService, globalShortcut: viewModel.globalShortcut)
         }
 
         Window("Hooks", id: "hooks-editor") {
