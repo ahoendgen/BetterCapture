@@ -100,8 +100,9 @@ final class TranscriptionService {
     /// Stops the daemon process.
     func stop() {
         sendCommand(["action": "quit"])
-        process?.waitUntilExit()
+        let proc = process
         cleanup()
+        Task.detached { proc?.waitUntilExit() }
     }
 
     deinit {
@@ -109,6 +110,10 @@ final class TranscriptionService {
     }
 
     // MARK: - Private
+
+    /// Async line iterator over the daemon's stdout pipe.
+    /// Created fresh each time the daemon is (re)started and reused across transcription calls.
+    private var stdoutLineIterator: AsyncLineSequence<FileHandle.AsyncBytes>.AsyncIterator?
 
     private func ensureDaemonRunning(idleTimeout: Int) throws {
         if let proc = process, proc.isRunning {
@@ -136,6 +141,7 @@ final class TranscriptionService {
         self.process = proc
         self.stdinPipe = stdin
         self.stdoutPipe = stdout
+        self.stdoutLineIterator = stdout.fileHandleForReading.bytes.lines.makeAsyncIterator()
     }
 
     private func transcribeFile(_ url: URL, baseProgress: Double, fileWeight: Double) async throws -> String {
@@ -146,55 +152,40 @@ final class TranscriptionService {
 
         sendCommand(command)
 
-        // Read responses line by line until we get a final result
-        guard let stdout = stdoutPipe else {
+        guard var iterator = stdoutLineIterator else {
             throw TranscriptionError.daemonNotRunning
         }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            Task.detached { [weak self] in
-                let handle = stdout.fileHandleForReading
-                var accumulated = ""
+        // Read JSON lines from daemon stdout using async iteration.
+        // The iterator is shared across transcription calls to maintain
+        // proper read position in the pipe.
+        defer { stdoutLineIterator = iterator }
 
-                while true {
-                    guard let data = try? handle.availableData, !data.isEmpty else {
-                        continuation.resume(throwing: TranscriptionError.daemonCrashed)
-                        return
-                    }
+        while let line = try await iterator.next() {
+            guard !line.isEmpty,
+                  let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else {
+                continue
+            }
 
-                    guard let line = String(data: data, encoding: .utf8) else { continue }
+            // Progress update
+            if let chunkProgress = json["progress"] as? Double {
+                progress = baseProgress + chunkProgress * fileWeight
+                continue
+            }
 
-                    for jsonLine in line.components(separatedBy: "\n") where !jsonLine.isEmpty {
-                        guard let json = try? JSONSerialization.jsonObject(with: Data(jsonLine.utf8)) as? [String: Any] else {
-                            continue
-                        }
+            // Successful result
+            if json["ok"] as? Bool == true {
+                return json["text"] as? String ?? ""
+            }
 
-                        // Progress message
-                        if let chunkProgress = json["progress"] as? Double {
-                            await MainActor.run {
-                                self?.progress = baseProgress + chunkProgress * fileWeight
-                            }
-                            continue
-                        }
-
-                        // Final result
-                        if json["ok"] as? Bool == true {
-                            let text = json["text"] as? String ?? ""
-                            continuation.resume(returning: text)
-                            return
-                        }
-
-                        // Error
-                        if let error = json["error"] as? String {
-                            continuation.resume(throwing: TranscriptionError.engineError(error))
-                            return
-                        }
-                    }
-
-                    accumulated += line
-                }
+            // Error from daemon
+            if let error = json["error"] as? String {
+                throw TranscriptionError.engineError(error)
             }
         }
+
+        // Iterator exhausted = daemon exited
+        throw TranscriptionError.daemonCrashed
     }
 
     private func sendCommand(_ dict: [String: Any]) {
@@ -210,6 +201,7 @@ final class TranscriptionService {
     private func cleanup() {
         stdinPipe = nil
         stdoutPipe = nil
+        stdoutLineIterator = nil
         process = nil
     }
 }
