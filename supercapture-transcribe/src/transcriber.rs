@@ -6,7 +6,7 @@ use transcribe_rs::engines::parakeet::{
 };
 use transcribe_rs::TranscriptionEngine;
 
-use crate::audio::ChunkedWavReader;
+use crate::audio::ChunkedAudioReader;
 use crate::protocol::Progress;
 
 const CHUNK_DURATION_SECS: f64 = 30.0;
@@ -34,7 +34,7 @@ impl Drop for Engine {
 /// Transcribes a WAV file in chunks, writing progress to stdout.
 /// Returns the concatenated full transcription text.
 pub fn transcribe_file(engine: &mut Engine, path: &Path, stdout: &Stdout) -> Result<String> {
-    let reader = ChunkedWavReader::open(path, CHUNK_DURATION_SECS)?;
+    let reader = ChunkedAudioReader::open(path, CHUNK_DURATION_SECS)?;
     let total_chunks = reader.total_chunks;
     let mut texts: Vec<String> = Vec::new();
 

@@ -1,15 +1,21 @@
 use anyhow::{Context, Result};
-use hound::WavReader;
 use rubato::{FftFixedIn, Resampler};
 use std::path::Path;
+use symphonia::core::audio::SampleBuffer;
+use symphonia::core::codecs::DecoderOptions;
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::probe::Hint;
 
 const TARGET_SAMPLE_RATE: u32 = 16_000;
 const RESAMPLER_CHUNK_SIZE: usize = 1024;
 
-/// Reads a WAV file in chunks, resamples to 16kHz mono f32.
-/// Returns an iterator of audio chunks, each ~`chunk_duration_secs` long.
-pub struct ChunkedWavReader {
-    samples_iter: Box<dyn Iterator<Item = f32>>,
+/// Reads an audio file in chunks, resamples to 16kHz mono f32.
+/// Supports WAV, M4A/AAC, and other formats via symphonia.
+pub struct ChunkedAudioReader {
+    samples: Vec<f32>,
+    position: usize,
     input_sample_rate: u32,
     channels: u16,
     /// Samples per chunk at the input sample rate (per channel)
@@ -18,37 +24,88 @@ pub struct ChunkedWavReader {
     chunks_read: usize,
 }
 
-impl ChunkedWavReader {
+impl ChunkedAudioReader {
     pub fn open(path: &Path, chunk_duration_secs: f64) -> Result<Self> {
-        let reader = WavReader::open(path).context("failed to open WAV file")?;
-        let spec = reader.spec();
-        let total_samples = reader.len() as usize;
-        let channels = spec.channels;
-        let sample_rate = spec.sample_rate;
+        let file = std::fs::File::open(path).context("failed to open audio file")?;
+        let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
-        // Samples per chunk (all channels)
+        let mut hint = Hint::new();
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            hint.with_extension(ext);
+        }
+
+        let probed = symphonia::default::get_probe()
+            .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+            .context("failed to probe audio format")?;
+
+        let mut format = probed.format;
+
+        let track = format
+            .default_track()
+            .context("no audio track found")?
+            .clone();
+
+        let sample_rate = track
+            .codec_params
+            .sample_rate
+            .context("unknown sample rate")?;
+
+        let mut decoder = symphonia::default::get_codecs()
+            .make(&track.codec_params, &DecoderOptions::default())
+            .context("failed to create decoder")?;
+
+        // Decode all samples into a flat f32 buffer (interleaved).
+        // Channel count is determined from the first decoded packet
+        // since codec params may not include it (e.g. AAC).
+        let mut all_samples: Vec<f32> = Vec::new();
+        let mut channels: u16 = track
+            .codec_params
+            .channels
+            .map(|c| c.count() as u16)
+            .unwrap_or(1);
+
+        loop {
+            let packet = match format.next_packet() {
+                Ok(p) => p,
+                Err(symphonia::core::errors::Error::IoError(ref e))
+                    if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+                {
+                    break;
+                }
+                Err(e) => return Err(e.into()),
+            };
+
+            if packet.track_id() != track.id {
+                continue;
+            }
+
+            let decoded = match decoder.decode(&packet) {
+                Ok(d) => d,
+                Err(symphonia::core::errors::Error::DecodeError(_)) => continue,
+                Err(e) => return Err(e.into()),
+            };
+
+            let spec = *decoded.spec();
+            if all_samples.is_empty() {
+                channels = spec.channels.count() as u16;
+            }
+            let num_frames = decoded.frames();
+            let mut sample_buf = SampleBuffer::<f32>::new(num_frames as u64, spec);
+            sample_buf.copy_interleaved_ref(decoded);
+            all_samples.extend_from_slice(sample_buf.samples());
+        }
+
+        let samples_per_channel = if channels == 0 { 0 } else { all_samples.len() / channels as usize };
         let chunk_size_samples = (chunk_duration_secs * sample_rate as f64) as usize;
-        let samples_per_channel = total_samples / channels as usize;
-        let total_chunks = (samples_per_channel + chunk_size_samples - 1) / chunk_size_samples;
-
-        // Convert all samples to f32 via streaming iterator
-        let samples_iter: Box<dyn Iterator<Item = f32>> = match spec.sample_format {
-            hound::SampleFormat::Int => {
-                let bits = spec.bits_per_sample;
-                let max_val = (1i64 << (bits - 1)) as f32;
-                Box::new(
-                    reader
-                        .into_samples::<i32>()
-                        .map(move |s| s.unwrap_or(0) as f32 / max_val),
-                )
-            }
-            hound::SampleFormat::Float => {
-                Box::new(reader.into_samples::<f32>().map(|s| s.unwrap_or(0.0)))
-            }
+        let total_chunks = if samples_per_channel == 0 {
+            0
+        } else {
+            (samples_per_channel + chunk_size_samples - 1) / chunk_size_samples
         };
 
         Ok(Self {
-            samples_iter,
+            samples: all_samples,
+            position: 0,
             input_sample_rate: sample_rate,
             channels,
             chunk_size_samples,
@@ -58,7 +115,7 @@ impl ChunkedWavReader {
     }
 }
 
-impl Iterator for ChunkedWavReader {
+impl Iterator for ChunkedAudioReader {
     /// Returns resampled 16kHz mono f32 chunk
     type Item = Result<Vec<f32>>;
 
@@ -69,22 +126,18 @@ impl Iterator for ChunkedWavReader {
 
         // Read chunk_size_samples frames (interleaved)
         let total_interleaved = self.chunk_size_samples * self.channels as usize;
-        let mut raw: Vec<f32> = Vec::with_capacity(total_interleaved);
-        for sample in self.samples_iter.by_ref() {
-            raw.push(sample);
-            if raw.len() >= total_interleaved {
-                break;
-            }
-        }
+        let end = (self.position + total_interleaved).min(self.samples.len());
+        let raw = &self.samples[self.position..end];
 
         if raw.is_empty() {
             return None;
         }
 
+        self.position = end;
         self.chunks_read += 1;
 
         // Convert to mono
-        let mono = to_mono(&raw, self.channels);
+        let mono = to_mono(raw, self.channels);
 
         // Resample if needed
         if self.input_sample_rate == TARGET_SAMPLE_RATE {
